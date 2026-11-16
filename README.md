@@ -52,17 +52,28 @@ browser access, not your GitHub account or the root Linux user.
 
 Use **New terminal** in the left sidebar to run additional tasks. Select a
 terminal to switch to it, **Rename** to label it, or its **x** button to close it.
-Switching keeps its connection and running task alive.
+Switching keeps the shell and its running task alive.
 
 All terminals use the same Copilot/GitHub sign-in, mounted files, permissions
-and installed tools. They are separate shells/PTYs for concurrent tasks, not
-isolated accounts or a single shared conversation. New shells start in
-`/Storage/repos`. Multiple devices can use the container simultaneously;
-each browser page manages its own sidebar.
+and installed tools. The sidebar is shared across devices. Selecting the same
+terminal from another device attaches to the same shell and running CLI
+process, including its current conversation.
 
-Closing a terminal ends its connection and can stop its programs. Reloading
-or closing the browser page also ends that page's connections. This sidebar
-is not a persistent tmux session.
+Each new browser page initially creates a fresh shell in `/Storage/repos`.
+You can then switch to an existing terminal. Untouched shells are automatically
+discarded after **60 seconds**, so opening another device does not leave empty
+terminals behind. Once you type, paste, rename a terminal or run a job, it is
+kept for **24 hours after activity**.
+
+Foreground and background jobs prevent automatic cleanup. The retention clock
+restarts after a job finishes; inspection failures conservatively keep shells.
+These defaults are editable through `TERMINAL_UNUSED_TIMEOUT` and
+`TERMINAL_IDLE_TIMEOUT`, in seconds; `0` disables the corresponding expiry.
+
+Closing or reloading a browser page only detaches from its tmux-backed shells.
+The **x** button explicitly closes that terminal on all devices and can stop
+its programs. Shells survive browser disconnections, not container restarts;
+restart/update the container only when its running tasks can be interrupted.
 
 ## Persistent system keyring
 
@@ -172,7 +183,7 @@ public.
 
 ```sh
 docker build -t copilot-cli:test .
-node --test tests/terminal-ui.test.mjs
+node --test tests/*.test.mjs
 sh tests/smoke.sh copilot-cli:test
 
 # Podman is also supported:

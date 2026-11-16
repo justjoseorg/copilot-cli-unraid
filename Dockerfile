@@ -20,6 +20,7 @@ RUN apk add --no-cache \
         py3-pip \
         setpriv \
         tini \
+        tmux \
         ttyd \
     && npm install --global "@github/copilot@${COPILOT_VERSION}" \
     && npm cache clean --force \
@@ -30,10 +31,12 @@ COPY rootfs/usr/local/bin/container-init /usr/local/bin/container-init
 COPY rootfs/usr/local/bin/start-keyring /usr/local/bin/start-keyring
 COPY rootfs/usr/local/bin/start-terminal /usr/local/bin/start-terminal
 COPY rootfs/usr/local/bin/terminal-ui.mjs /usr/local/bin/terminal-ui.mjs
+COPY rootfs/usr/local/bin/attach-terminal /usr/local/bin/attach-terminal
+COPY rootfs/usr/local/lib/terminal-sessions.mjs /usr/local/lib/terminal-sessions.mjs
 COPY rootfs/usr/local/share/copilot-terminal /usr/local/share/copilot-terminal
 COPY rootfs/etc/profile.d/copilot-tools.sh /etc/profile.d/copilot-tools.sh
 
-RUN chmod 0755 /usr/local/bin/apk /usr/local/bin/container-init /usr/local/bin/start-keyring /usr/local/bin/start-terminal \
+RUN chmod 0755 /usr/local/bin/apk /usr/local/bin/container-init /usr/local/bin/start-keyring /usr/local/bin/start-terminal /usr/local/bin/attach-terminal \
     && mkdir -p /config /workspace /Storage/repos
 
 ENV HOME=/config \
@@ -51,6 +54,8 @@ ENV HOME=/config \
     NPM_CONFIG_PREFIX=/config/npm \
     NPM_CONFIG_CACHE=/config/cache/npm \
     PIP_CACHE_DIR=/config/cache/pip \
+    TERMINAL_IDLE_TIMEOUT=86400 \
+    TERMINAL_UNUSED_TIMEOUT=60 \
     PATH=/config/python/bin:/config/npm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
     LANG=C.UTF-8 \
     COLORTERM=truecolor \

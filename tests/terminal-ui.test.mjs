@@ -5,6 +5,7 @@ import test from 'node:test';
 import { createTerminalServer } from '../rootfs/usr/local/bin/terminal-ui.mjs';
 
 const authorization = `Basic ${Buffer.from('test-user:test:password').toString('base64')}`;
+const sessionId = 'a'.repeat(32);
 
 async function setup(context) {
   const backend = http.createServer((request, response) => {
@@ -19,6 +20,15 @@ async function setup(context) {
   await once(backend, 'listening');
   const server = createTerminalServer({
     username: 'test-user', password: 'test:password', backendPort: backend.address().port,
+    sessions: {
+      has: id => id === sessionId,
+      attach: () => {},
+      list: async () => [{ id: sessionId, name: 'Terminal 1' }],
+      create: async () => ({ id: sessionId }),
+      activity: () => {},
+      rename: () => {},
+      close: async () => {},
+    },
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -34,7 +44,7 @@ async function setup(context) {
 
 test('sidebar assets require the same credentials as terminals', async context => {
   const { origin } = await setup(context);
-  for (const path of ['/', '/app.js', '/style.css', '/terminal/', '/terminal/token']) {
+  for (const path of ['/', '/app.js', '/style.css', '/terminal/', '/terminal/token', '/api/terminals']) {
     const denied = await fetch(origin + path);
     assert.equal(denied.status, 401);
     assert.match(denied.headers.get('www-authenticate'), /^Basic /);
@@ -81,7 +91,8 @@ test('websocket upgrades require authentication, an allowed route and same origi
   assert.equal((await upgrade(origin, { authorization, Origin: 'http://other-host' })).response.statusCode, 403);
   assert.equal((await upgrade(origin, { authorization })).response.statusCode, 403);
   assert.equal((await upgrade(origin, { authorization, Origin: origin }, '/other/ws')).response.statusCode, 403);
-  const { response, socket } = await upgrade(origin, { authorization, Origin: origin });
+  assert.equal((await upgrade(origin, { authorization, Origin: origin })).response.statusCode, 404);
+  const { response, socket } = await upgrade(origin, { authorization, Origin: origin }, `/terminal/ws?arg=${sessionId}`);
   assert.equal(response.statusCode, 101);
   try {
     const received = once(socket, 'data');
@@ -90,4 +101,27 @@ test('websocket upgrades require authentication, an allowed route and same origi
   } finally {
     socket.destroy();
   }
+});
+
+test('shared session mutations require the authenticated same-origin browser', async context => {
+  const { origin } = await setup(context);
+  const denied = await fetch(origin + '/api/terminals', {
+    method: 'POST', headers: { authorization, Origin: 'http://other-host' },
+  });
+  assert.equal(denied.status, 403);
+  const created = await fetch(origin + '/api/terminals', {
+    method: 'POST', headers: { authorization, Origin: origin },
+  });
+  assert.deepEqual(await created.json(), { id: sessionId });
+  const listed = await fetch(origin + '/api/terminals', { headers: { authorization } });
+  assert.equal((await listed.json()).terminals[0].id, sessionId);
+  const activity = await fetch(`${origin}/api/terminals/${sessionId}/activity`, {
+    method: 'POST', headers: { authorization, Origin: origin },
+  });
+  assert.equal(activity.status, 200);
+  const renamed = await fetch(`${origin}/api/terminals/${sessionId}`, {
+    method: 'PATCH', headers: { authorization, Origin: origin, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Build' }),
+  });
+  assert.equal(renamed.status, 200);
 });

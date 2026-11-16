@@ -37,7 +37,7 @@ jobs:
 
       - name: Test CLI, authentication and persistence
         run: |
-          node --test tests/terminal-ui.test.mjs
+          node --test tests/*.test.mjs
           sh tests/smoke.sh copilot-cli:test
 
       - uses: docker/login-action@v3

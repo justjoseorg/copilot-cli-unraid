@@ -64,6 +64,21 @@ start
 code=$("$runtime" exec "$container" curl -sS -u "$credentials" \
     -o /dev/null -w '%{http_code}' http://127.0.0.1:7681/)
 test "$code" = 200
+"$runtime" exec "$container" node --input-type=module -e '
+    import assert from "node:assert/strict";
+    const origin = "http://127.0.0.1:7681";
+    const headers = {
+        Authorization: "Basic " + Buffer.from(process.env.WEB_TERMINAL_USER + ":" + process.env.WEB_TERMINAL_PASSWORD).toString("base64"),
+        Origin: origin,
+    };
+    const created = await fetch(origin + "/api/terminals", { method: "POST", headers });
+    assert.equal(created.status, 200);
+    const terminal = await created.json();
+    const listed = await fetch(origin + "/api/terminals", { headers });
+    assert((await listed.json()).terminals.some(item => item.id === terminal.id));
+    const closed = await fetch(origin + "/api/terminals/" + terminal.id, { method: "DELETE", headers });
+    assert.equal(closed.status, 200);
+'
 "$runtime" exec "$container" sh -ec '
     curl -fsS -u "smoke-user:test-only:password" http://127.0.0.1:7681/ | grep -q "id=\"new-terminal\""
     curl -fsS -u "smoke-user:test-only:password" http://127.0.0.1:7681/terminal/ >/dev/null

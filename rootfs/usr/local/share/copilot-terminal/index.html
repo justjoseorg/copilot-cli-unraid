@@ -12,7 +12,7 @@
     <div class="brand"><span aria-hidden="true">&gt;_</span> Copilot CLI</div>
     <button id="new-terminal" class="new-terminal" type="button">+ New terminal</button>
     <nav id="terminal-list" aria-label="Terminals"></nav>
-    <p class="sidebar-note">Separate shells.<br>Shared files and sign-in.</p>
+    <p class="sidebar-note">Shared across devices.<br>Unused shells clear automatically.</p>
   </aside>
   <main>
     <header>
@@ -22,6 +22,7 @@
       </div>
       <button id="rename-terminal" type="button" disabled>Rename</button>
     </header>
+    <p id="notice" role="status" hidden></p>
     <div id="terminal-panels">
       <div id="empty-state">No terminals open. Select <strong>New terminal</strong> to start one.</div>
     </div>
