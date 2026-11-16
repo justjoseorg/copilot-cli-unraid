@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+
+WEB_TERMINAL_USER=${WEB_TERMINAL_USER:-terminal}
+
+if [ -z "${WEB_TERMINAL_PASSWORD:-}" ]; then
+    echo "WEB_TERMINAL_PASSWORD must be set before starting the web terminal." >&2
+    exit 1
+fi
+
+case "${WEB_TERMINAL_USER}" in
+    *:*)
+        echo "WEB_TERMINAL_USER cannot contain a colon." >&2
+        exit 1
+        ;;
+esac
+
+exec ttyd --writable --check-origin --port 7681 \
+    --credential "${WEB_TERMINAL_USER}:${WEB_TERMINAL_PASSWORD}" \
+    sh -l

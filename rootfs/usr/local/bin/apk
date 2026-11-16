@@ -1,0 +1,41 @@
+#!/bin/sh
+set -eu
+
+REAL_APK=/sbin/apk
+CONFIG_DIR=${CONFIG_DIR:-/config}
+PACKAGE_FILE="${CONFIG_DIR}/apk-packages"
+
+case "${1:-}" in
+    add)
+        before=$(mktemp)
+        after=$(mktemp)
+        trap 'rm -f "${before}" "${after}"' EXIT HUP INT TERM
+
+        sort /etc/apk/world > "${before}"
+        "${REAL_APK}" "$@"
+        sort /etc/apk/world > "${after}"
+
+        mkdir -p "${CONFIG_DIR}"
+        touch "${PACKAGE_FILE}"
+        comm -13 "${before}" "${after}" >> "${PACKAGE_FILE}"
+        sort -u -o "${PACKAGE_FILE}" "${PACKAGE_FILE}"
+        ;;
+    del|delete)
+        "${REAL_APK}" "$@"
+
+        if [ -f "${PACKAGE_FILE}" ]; then
+            installed=$(mktemp)
+            declared=$(mktemp)
+            retained=$(mktemp)
+            trap 'rm -f "${installed}" "${declared}" "${retained}"' EXIT HUP INT TERM
+
+            sort /etc/apk/world > "${installed}"
+            sort "${PACKAGE_FILE}" > "${declared}"
+            comm -12 "${declared}" "${installed}" > "${retained}"
+            mv "${retained}" "${PACKAGE_FILE}"
+        fi
+        ;;
+    *)
+        exec "${REAL_APK}" "$@"
+        ;;
+esac
