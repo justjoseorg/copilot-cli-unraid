@@ -17,6 +17,9 @@ rest of Storage. The image workflow publishes to GitHub Container Registry as:
 ghcr.io/justjoseorg/copilot-cli-unraid:latest
 ```
 
+The workspace includes a hidden `.copilot-workspace` keep-file so host cleanup
+does not unlink an empty bind-mounted repositories folder.
+
 Set a strong **Web terminal password** in the template, then click **WebUI**. Authenticate with the configured web terminal username (default: `terminal`) and password. From the terminal, authenticate GitHub:
 
 ```sh

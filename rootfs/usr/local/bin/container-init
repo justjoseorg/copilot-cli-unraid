@@ -7,6 +7,11 @@ PACKAGE_FILE="${CONFIG_DIR}/apk-packages"
 mkdir -p "${CONFIG_DIR}" "${GH_CONFIG_DIR}" "${COPILOT_HOME}" "${XDG_CONFIG_HOME}" "${XDG_CACHE_HOME}"
 touch "${PACKAGE_FILE}"
 
+# Keep empty-directory cleanup from unlinking the workspace bind mount.
+if [ -w /Storage/repos ]; then
+    touch /Storage/repos/.copilot-workspace
+fi
+
 if [ -s "${PACKAGE_FILE}" ]; then
     # Packages added with the apk wrapper are restored whenever a new container starts.
     xargs -r /sbin/apk add --no-cache < "${PACKAGE_FILE}"

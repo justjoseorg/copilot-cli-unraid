@@ -87,6 +87,7 @@ test "$code" = 200
 "$runtime" exec "$container" sh -ec '
     test "$HOME" = /config
     test "$PWD" = /Storage/repos
+    test -f /Storage/repos/.copilot-workspace
     copilot --version
     gh --version
     touch /config/.copilot/container-smoke-state /Storage/repos/container-smoke-state
