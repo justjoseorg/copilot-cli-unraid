@@ -65,6 +65,11 @@ code=$("$runtime" exec "$container" curl -sS -u "$credentials" \
     -o /dev/null -w '%{http_code}' http://127.0.0.1:7681/)
 test "$code" = 200
 "$runtime" exec "$container" sh -ec '
+    curl -fsS -u "smoke-user:test-only:password" http://127.0.0.1:7681/ | grep -q "id=\"new-terminal\""
+    curl -fsS -u "smoke-user:test-only:password" http://127.0.0.1:7681/terminal/ >/dev/null
+    test "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:7681/terminal/token)" = 401
+'
+"$runtime" exec "$container" sh -ec '
     test "$HOME" = /config
     test "$PWD" = /Storage/repos
     copilot --version
@@ -73,6 +78,9 @@ test "$code" = 200
     test "$(stat -c %a /config/.keyring-password)" = 600
     printf dummy-keyring-smoke-secret | secret-tool store \
         --label="Copilot image smoke test" service copilot-cli-unraid-smoke account test
+    test "$(command -v python)" = /config/python/bin/python
+    pip install --disable-pip-version-check six==1.17.0
+    npm install --global --ignore-scripts semver@7.7.2
     apk add --no-cache jq
     test "$(cat /config/apk-packages)" = jq
 '
@@ -83,9 +91,17 @@ start
     test -f /config/.copilot/container-smoke-state
     test -f /Storage/repos/container-smoke-state
     test "$(secret-tool lookup service copilot-cli-unraid-smoke account test)" = dummy-keyring-smoke-secret
+    python -c "import six; assert six.__version__ == \"1.17.0\""
+    test "$(command -v semver)" = /config/npm/bin/semver
+    test "$(semver 1.2.3)" = 1.2.3
     jq --version
     apk del jq
     test ! -s /config/apk-packages
+'
+"$runtime" exec "$container" sh -lc '
+    test "$(command -v python)" = /config/python/bin/python
+    test "$(command -v pip)" = /config/python/bin/pip
+    test "$(command -v semver)" = /config/npm/bin/semver
 '
 
 "$runtime" rm -f "$container" >/dev/null
@@ -94,6 +110,8 @@ start
     test -f /Storage/repos/container-smoke-state
     ! /sbin/apk info -e jq
     test "$(secret-tool lookup service copilot-cli-unraid-smoke account test)" = dummy-keyring-smoke-secret
+    python -c "import six; assert six.__version__ == \"1.17.0\""
+    test "$(semver 1.2.3)" = 1.2.3
     mv /config/.keyring-password /config/.keyring-password.saved
     printf wrong-test-password > /config/.keyring-password
 '

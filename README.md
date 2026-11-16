@@ -1,6 +1,6 @@
 # Copilot CLI Web Terminal for Unraid
 
-An Alpine Linux browser terminal with [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli) and [GitHub CLI](https://cli.github.com/). It uses [ttyd](https://github.com/tsl0922/ttyd), so the terminal supports ANSI colors, interactive applications, and browser copy/paste.
+An Alpine Linux browser terminal with [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli), [GitHub CLI](https://cli.github.com/), Node.js and Python. A lightweight sidebar wraps [ttyd](https://github.com/tsl0922/ttyd), preserving ANSI colors, interactive applications, and browser copy/paste.
 
 ## Unraid installation
 
@@ -48,11 +48,21 @@ into shell history on a shared host.
 Both web terminal credentials are editable in the Unraid template. They control
 browser access, not your GitHub account or the root Linux user.
 
-Each browser connection starts a separate shell and PTY. Multiple devices can
-keep independent terminals open at the same time; there is no shared tmux
-session. They share the mounted files, GitHub authentication and configuration.
-Closing a connection ends that shell, rather than attaching the next device
-to it.
+## Multiple terminals, one shared environment
+
+Use **New terminal** in the left sidebar to run additional tasks. Select a
+terminal to switch to it, **Rename** to label it, or its **x** button to close it.
+Switching keeps its connection and running task alive.
+
+All terminals use the same Copilot/GitHub sign-in, mounted files, permissions
+and installed tools. They are separate shells/PTYs for concurrent tasks, not
+isolated accounts or a single shared conversation. New shells start in
+`/Storage/repos`. Multiple devices can use the container simultaneously;
+each browser page manages its own sidebar.
+
+Closing a terminal ends its connection and can stop its programs. Reloading
+or closing the browser page also ends that page's connections. This sidebar
+is not a persistent tmux session.
 
 ## Persistent system keyring
 
@@ -82,12 +92,34 @@ Existing authentication files are not changed or migrated. If you previously
 enabled `storeTokenPlaintext`, disable that setting and sign in again after
 updating to use the keyring.
 
-## Persistent packages
+## Persistent Python, Node.js and packages
+
+Python and Node.js are included by default. Every terminal automatically uses
+the shared Python virtual environment at `/config/python`. Install Python
+packages normally:
+
+```sh
+pip install requests
+python your_script.py
+```
+
+The virtual environment, including packages and command-line scripts, survives
+container recreation and image updates while `/config` is retained. Global npm
+tools are also persistent, under `/config/npm`:
+
+```sh
+npm install --global typescript
+```
+
+Project-local dependencies also persist when the project is in `/Storage/repos`.
+Python environments and compiled Python/Node modules may need rebuilding after
+an incompatible interpreter or CPU-architecture change. These directories are
+shared by all terminals; use a project-specific environment when isolation is needed.
 
 Use `apk add` normally from the browser terminal:
 
 ```sh
-apk add python3 py3-pip
+apk add build-base
 ```
 
 The image records explicitly requested packages in `/config/apk-packages` and
@@ -104,14 +136,26 @@ The container opens in `/Storage/repos`. Keep projects in that mounted directory
 not the disposable container filesystem. It does not mount the Docker socket
 or the host filesystem by default.
 
+## Optional Intel/AMD GPU access
+
+Add `--device /dev/dri:/dev/dri` to the Docker command to expose an Intel/AMD
+GPU. The Unraid template includes an optional **GPU device** entry for this.
+Remove that entry to disable GPU access or install on a host without `/dev/dri`;
+do not leave the device value blank. Privileged mode is not needed.
+
+This provides device access, not an installed GPU compute framework. Install
+the userspace libraries required by your specific VAAPI, Vulkan, OpenCL or
+other workload. Copilot CLI itself does not need or use the GPU.
+
 ## Security
 
 The browser terminal has root access to the container, so it requires HTTP basic authentication and has no default password. Use a strong unique password, do not expose port `7681` directly to the internet, and access it through a VPN or a reverse proxy with TLS when connecting outside the local network.
 
 ## Publishing
 
-The GitHub Actions workflow checks CLI startup, web authentication, and
-cross-container configuration/workspace/keyring/package persistence before building
+The GitHub Actions workflow checks the authenticated HTTP/WebSocket proxy,
+CLI startup, web authentication, and cross-container
+configuration/workspace/keyring/APK/pip/npm persistence before building
 `linux/amd64` and `linux/arm64` images. It publishes to GHCR when `main` is
 updated or a `v*` tag is pushed. Pull requests run the smoke test without
 publishing.
@@ -128,6 +172,7 @@ public.
 
 ```sh
 docker build -t copilot-cli:test .
+node --test tests/terminal-ui.test.mjs
 sh tests/smoke.sh copilot-cli:test
 
 # Podman is also supported:

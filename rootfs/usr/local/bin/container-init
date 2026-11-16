@@ -12,6 +12,11 @@ if [ -s "${PACKAGE_FILE}" ]; then
     xargs -r /sbin/apk add --no-cache < "${PACKAGE_FILE}"
 fi
 
+mkdir -p "${NPM_CONFIG_PREFIX}"
+if [ ! -x "${VIRTUAL_ENV}/bin/python" ]; then
+    /usr/bin/python3 -m venv "${VIRTUAL_ENV}"
+fi
+
 /usr/local/bin/start-keyring
 
 exec "$@"

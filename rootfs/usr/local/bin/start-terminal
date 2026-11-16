@@ -15,7 +15,5 @@ case "${WEB_TERMINAL_USER}" in
         ;;
 esac
 
-exec ttyd --writable --check-origin --port 7681 --max-clients 0 \
-    --cwd /Storage/repos \
-    --credential "${WEB_TERMINAL_USER}:${WEB_TERMINAL_PASSWORD}" \
-    sh -l
+export WEB_TERMINAL_USER
+exec node /usr/local/bin/terminal-ui.mjs

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Copilot terminals</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar" aria-label="Terminal sidebar">
+    <div class="brand"><span aria-hidden="true">&gt;_</span> Copilot CLI</div>
+    <button id="new-terminal" class="new-terminal" type="button">+ New terminal</button>
+    <nav id="terminal-list" aria-label="Terminals"></nav>
+    <p class="sidebar-note">Separate shells.<br>Shared files and sign-in.</p>
+  </aside>
+  <main>
+    <header>
+      <div class="heading">
+        <h1 id="active-title">Terminals</h1>
+        <span class="workspace">/Storage/repos</span>
+      </div>
+      <button id="rename-terminal" type="button" disabled>Rename</button>
+    </header>
+    <div id="terminal-panels">
+      <div id="empty-state">No terminals open. Select <strong>New terminal</strong> to start one.</div>
+    </div>
+  </main>
+</body>
+</html>
