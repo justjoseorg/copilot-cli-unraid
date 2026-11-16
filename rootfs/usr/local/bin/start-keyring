@@ -1,0 +1,62 @@
+#!/bin/sh
+set -eu
+
+umask 077
+keyrings="${XDG_DATA_HOME}/keyrings"
+password_file=${KEYRING_PASSWORD_FILE:-"${HOME}/.keyring-password"}
+
+mkdir -p "${XDG_RUNTIME_DIR}" "${GNOME_KEYRING_CONTROL}" "${keyrings}"
+chmod 0700 "${XDG_RUNTIME_DIR}" "${GNOME_KEYRING_CONTROL}" "${keyrings}"
+
+if [ ! -e "${password_file}" ]; then
+    if [ -n "${KEYRING_PASSWORD_FILE:-}" ]; then
+        echo "KEYRING_PASSWORD_FILE does not exist; restore the keyring unlock secret." >&2
+        exit 1
+    fi
+    if [ -n "$(ls -A "${keyrings}")" ]; then
+        echo "Keyring data exists but its unlock secret is missing; restore ${password_file}." >&2
+        exit 1
+    fi
+    (
+        set -C
+        od -v -An -N32 -tx1 /dev/urandom | tr -d ' \n' > "${password_file}"
+    )
+fi
+
+if [ ! -f "${password_file}" ] || [ ! -s "${password_file}" ] || [ -L "${password_file}" ]; then
+    echo "The keyring unlock secret must be a nonempty regular file, not a symlink." >&2
+    exit 1
+fi
+if [ -z "${KEYRING_PASSWORD_FILE:-}" ]; then
+    chmod 0600 "${password_file}"
+fi
+
+dbus-uuidgen --ensure=/etc/machine-id
+dbus-daemon --session --address="${DBUS_SESSION_BUS_ADDRESS}" --fork --nopidfile
+
+# Default containers cannot grant the IPC_LOCK capability requested by GNOME Keyring.
+setpriv --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs \
+    gnome-keyring-daemon --unlock --components=secrets \
+    --control-directory="${GNOME_KEYRING_CONTROL}" < "${password_file}" > /dev/null
+
+attempt=0
+until dbus-send --session --print-reply --reply-timeout=1000 \
+    --dest=org.freedesktop.DBus /org/freedesktop/DBus \
+    org.freedesktop.DBus.NameHasOwner string:org.freedesktop.secrets \
+    | grep -q 'boolean true'; do
+    attempt=$((attempt + 1))
+    if [ "${attempt}" -ge 15 ]; then
+        echo "The keyring Secret Service did not become ready." >&2
+        exit 1
+    fi
+    sleep 1
+done
+
+if ! printf 'ready' | timeout 15 secret-tool store \
+    --label="Copilot container keyring readiness" \
+    service copilot-cli-unraid-readiness purpose startup; then
+    echo "Cannot unlock the persistent keyring; original credentials were left unchanged." >&2
+    exit 1
+fi
+test "$(timeout 10 secret-tool lookup service copilot-cli-unraid-readiness purpose startup)" = ready
+timeout 10 secret-tool clear service copilot-cli-unraid-readiness purpose startup

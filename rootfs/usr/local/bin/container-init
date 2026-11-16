@@ -12,4 +12,6 @@ if [ -s "${PACKAGE_FILE}" ]; then
     xargs -r /sbin/apk add --no-cache < "${PACKAGE_FILE}"
 fi
 
+/usr/local/bin/start-keyring
+
 exec "$@"

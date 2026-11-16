@@ -8,8 +8,10 @@ The Unraid template lives in the separate
 [unraid-templates repository](https://github.com/justjoseorg/unraid-templates),
 with installation instructions there.
 
-Set `/config` to an Appdata directory and `/workspace` to the project directory
-you want to work in. The image workflow publishes to GitHub Container Registry as:
+Set `/config` to an Appdata directory. The template maps
+`/mnt/user/Storage/repos` to `/Storage/repos`, the default directory for each
+new terminal connection. Only this repositories folder is exposed, not the
+rest of Storage. The image workflow publishes to GitHub Container Registry as:
 
 ```text
 ghcr.io/justjoseorg/copilot-cli-unraid:latest
@@ -32,7 +34,8 @@ into the image.
 docker run -d --name copilot-cli \
   -p 7681:7681 \
   -v /path/to/copilot-cli-config:/config \
-  -v /path/to/projects:/workspace \
+  -v /mnt/user/Storage/repos:/Storage/repos \
+  -e WEB_TERMINAL_USER='terminal' \
   -e WEB_TERMINAL_PASSWORD='use-a-strong-password' \
   ghcr.io/justjoseorg/copilot-cli-unraid:latest
 
@@ -41,6 +44,43 @@ docker run -d --name copilot-cli \
 
 Use a private environment file (`--env-file`) instead of typing the password
 into shell history on a shared host.
+
+Both web terminal credentials are editable in the Unraid template. They control
+browser access, not your GitHub account or the root Linux user.
+
+Each browser connection starts a separate shell and PTY. Multiple devices can
+keep independent terminals open at the same time; there is no shared tmux
+session. They share the mounted files, GitHub authentication and configuration.
+Closing a connection ends that shell, rather than attaching the next device
+to it.
+
+## Persistent system keyring
+
+The image starts a private D-Bus session and GNOME Keyring Secret Service
+before accepting connections. Both browser shells and `docker exec` commands
+inherit the same bus address. The encrypted keyring is stored in
+`/config/.local/share/keyrings` and unlocked on subsequent starts.
+
+By default, startup generates a random unlock secret at
+`/config/.keyring-password` with mode `0600`. Back up this file together with
+the keyring directory. Startup refuses to replace a lost unlock secret or
+silently continue with an unusable keyring.
+
+The default unlock secret lives on the same persistent volume, so protect
+the entire `/config` directory and its backups as credentials. This is not
+protection against someone who can read that whole volume or control the
+container. To keep the unlock secret separately, mount a private secret file
+and set `KEYRING_PASSWORD_FILE` to its container path from the first start,
+or supply the existing unlock secret. Do not change the secret independently
+of the encrypted keyring. Changing the web terminal password does not rekey it.
+
+No privileged mode or extra container capabilities are required. Container
+memory-locking limits can still restrict protection against secrets being
+swapped out.
+
+Existing authentication files are not changed or migrated. If you previously
+enabled `storeTokenPlaintext`, disable that setting and sign in again after
+updating to use the keyring.
 
 ## Persistent packages
 
@@ -60,7 +100,7 @@ Restoring packages requires access to the Alpine repositories.
 
 Authentication, Copilot settings, GitHub CLI settings, and caches are also stored under `/config`.
 
-The container opens in `/workspace`. Keep projects in that mounted directory,
+The container opens in `/Storage/repos`. Keep projects in that mounted directory,
 not the disposable container filesystem. It does not mount the Docker socket
 or the host filesystem by default.
 
@@ -71,7 +111,7 @@ The browser terminal has root access to the container, so it requires HTTP basic
 ## Publishing
 
 The GitHub Actions workflow checks CLI startup, web authentication, and
-cross-container configuration/workspace/package persistence before building
+cross-container configuration/workspace/keyring/package persistence before building
 `linux/amd64` and `linux/arm64` images. It publishes to GHCR when `main` is
 updated or a `v*` tag is pushed. Pull requests run the smoke test without
 publishing.

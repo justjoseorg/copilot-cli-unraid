@@ -9,20 +9,27 @@ RUN apk add --no-cache \
         bash \
         ca-certificates \
         curl \
+        dbus \
         github-cli \
         git \
+        gnome-keyring \
+        libsecret \
         nodejs \
         npm \
+        setpriv \
+        tini \
         ttyd \
     && npm install --global "@github/copilot@${COPILOT_VERSION}" \
-    && npm cache clean --force
+    && npm cache clean --force \
+    && rm -f /etc/machine-id /var/lib/dbus/machine-id
 
 COPY rootfs/usr/local/bin/apk /usr/local/bin/apk
 COPY rootfs/usr/local/bin/container-init /usr/local/bin/container-init
+COPY rootfs/usr/local/bin/start-keyring /usr/local/bin/start-keyring
 COPY rootfs/usr/local/bin/start-terminal /usr/local/bin/start-terminal
 
-RUN chmod 0755 /usr/local/bin/apk /usr/local/bin/container-init /usr/local/bin/start-terminal \
-    && mkdir -p /config /workspace
+RUN chmod 0755 /usr/local/bin/apk /usr/local/bin/container-init /usr/local/bin/start-keyring /usr/local/bin/start-terminal \
+    && mkdir -p /config /workspace /Storage/repos
 
 ENV HOME=/config \
     COPILOT_HOME=/config/.copilot \
@@ -30,14 +37,18 @@ ENV HOME=/config \
     COPILOT_AUTO_UPDATE=false \
     GH_CONFIG_DIR=/config/gh \
     XDG_CONFIG_HOME=/config \
+    XDG_DATA_HOME=/config/.local/share \
     XDG_CACHE_HOME=/config/cache \
+    XDG_RUNTIME_DIR=/run/copilot \
+    DBUS_SESSION_BUS_ADDRESS=unix:path=/run/copilot/bus \
+    GNOME_KEYRING_CONTROL=/run/copilot/keyring \
     LANG=C.UTF-8 \
     COLORTERM=truecolor \
     TERM=xterm-256color
 
-WORKDIR /workspace
-VOLUME ["/config", "/workspace"]
+WORKDIR /Storage/repos
+VOLUME ["/config", "/Storage/repos"]
 EXPOSE 7681
 
-ENTRYPOINT ["/usr/local/bin/container-init"]
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/container-init"]
 CMD ["/usr/local/bin/start-terminal"]

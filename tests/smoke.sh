@@ -6,7 +6,7 @@ image=${1:-copilot-cli:test}
 container="copilot-cli-smoke-$$"
 config="${container}-config"
 workspace="${container}-workspace"
-credentials='terminal:test-only:password'
+credentials='smoke-user:test-only:password'
 
 cleanup() {
     "$runtime" rm -f "$container" >/dev/null 2>&1 || true
@@ -40,8 +40,9 @@ esac
 
 start() {
     "$runtime" run -d --name "$container" \
+        -e WEB_TERMINAL_USER=smoke-user \
         -e WEB_TERMINAL_PASSWORD=test-only:password \
-        -v "$config:/config" -v "$workspace:/workspace" \
+        -v "$config:/config" -v "$workspace:/Storage/repos" \
         "$image" >/dev/null
 
     attempt=0
@@ -65,10 +66,13 @@ code=$("$runtime" exec "$container" curl -sS -u "$credentials" \
 test "$code" = 200
 "$runtime" exec "$container" sh -ec '
     test "$HOME" = /config
-    test "$PWD" = /workspace
+    test "$PWD" = /Storage/repos
     copilot --version
     gh --version
-    touch /config/.copilot/container-smoke-state /workspace/container-smoke-state
+    touch /config/.copilot/container-smoke-state /Storage/repos/container-smoke-state
+    test "$(stat -c %a /config/.keyring-password)" = 600
+    printf dummy-keyring-smoke-secret | secret-tool store \
+        --label="Copilot image smoke test" service copilot-cli-unraid-smoke account test
     apk add --no-cache jq
     test "$(cat /config/apk-packages)" = jq
 '
@@ -77,7 +81,8 @@ test "$code" = 200
 start
 "$runtime" exec "$container" sh -ec '
     test -f /config/.copilot/container-smoke-state
-    test -f /workspace/container-smoke-state
+    test -f /Storage/repos/container-smoke-state
+    test "$(secret-tool lookup service copilot-cli-unraid-smoke account test)" = dummy-keyring-smoke-secret
     jq --version
     apk del jq
     test ! -s /config/apk-packages
@@ -86,7 +91,36 @@ start
 "$runtime" rm -f "$container" >/dev/null
 start
 "$runtime" exec "$container" sh -ec '
-    test -f /workspace/container-smoke-state
+    test -f /Storage/repos/container-smoke-state
     ! /sbin/apk info -e jq
+    test "$(secret-tool lookup service copilot-cli-unraid-smoke account test)" = dummy-keyring-smoke-secret
+    mv /config/.keyring-password /config/.keyring-password.saved
+    printf wrong-test-password > /config/.keyring-password
 '
-echo "CLI startup, HTTP authentication and cross-container persistence passed."
+"$runtime" rm -f "$container" >/dev/null
+if output=$("$runtime" run --rm -v "$config:/config" "$image" true 2>&1); then
+    echo "Startup accepted the wrong keyring unlock secret." >&2
+    exit 1
+fi
+case "$output" in
+    *"Cannot unlock the persistent keyring"*) ;;
+    *) printf '%s\n' "$output" >&2; exit 1 ;;
+esac
+"$runtime" run --rm --entrypoint sh -v "$config:/config" "$image" -ec '
+    mv /config/.keyring-password.saved /config/.keyring-password
+'
+start
+"$runtime" exec "$container" sh -ec '
+    test "$(secret-tool lookup service copilot-cli-unraid-smoke account test)" = dummy-keyring-smoke-secret
+    rm /config/.keyring-password
+'
+"$runtime" rm -f "$container" >/dev/null
+if output=$("$runtime" run --rm -v "$config:/config" "$image" true 2>&1); then
+    echo "Startup replaced a missing keyring unlock secret." >&2
+    exit 1
+fi
+case "$output" in
+    *"Keyring data exists but its unlock secret is missing"*) ;;
+    *) printf '%s\n' "$output" >&2; exit 1 ;;
+esac
+echo "CLI startup, HTTP authentication and configuration/workspace/keyring/package persistence passed."

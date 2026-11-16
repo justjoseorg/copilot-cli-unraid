@@ -15,6 +15,7 @@ case "${WEB_TERMINAL_USER}" in
         ;;
 esac
 
-exec ttyd --writable --check-origin --port 7681 \
+exec ttyd --writable --check-origin --port 7681 --max-clients 0 \
+    --cwd /Storage/repos \
     --credential "${WEB_TERMINAL_USER}:${WEB_TERMINAL_PASSWORD}" \
     sh -l
