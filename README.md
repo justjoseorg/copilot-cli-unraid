@@ -14,7 +14,7 @@ new terminal connection. Only this repositories folder is exposed, not the
 rest of Storage. The image workflow publishes to GitHub Container Registry as:
 
 ```text
-ghcr.io/justjoseorg/copilot-cli-unraid:latest
+ghcr.io/justjoseorg/copilot-cli-unraid:stable
 ```
 
 The workspace includes a hidden `.copilot-workspace` keep-file so host cleanup
@@ -40,7 +40,7 @@ docker run -d --name copilot-cli \
   -v /mnt/user/Storage/repos:/Storage/repos \
   -e WEB_TERMINAL_USER='terminal' \
   -e WEB_TERMINAL_PASSWORD='use-a-strong-password' \
-  ghcr.io/justjoseorg/copilot-cli-unraid:latest
+  ghcr.io/justjoseorg/copilot-cli-unraid:stable
 
 # Open http://localhost:7681 and sign in as terminal.
 ```
@@ -93,11 +93,28 @@ Hiding or showing the sidebar does not reconnect or close the active terminal.
 
 ## Updates on Unraid
 
-Every push to `main` runs the tests and publishes a new
-`ghcr.io/justjoseorg/copilot-cli-unraid:latest` image if they pass. Keep the
-Unraid container's **Repository** set to that exact tag, not a commit tag or
-digest. Changes on other branches become updates after merging into `main`;
-editing the separate XML template alone does not rebuild the image.
+Two release branches publish separate update channels after their checks pass:
+
+| Channel | Git branch | Image |
+| --- | --- | --- |
+| Stable (default) | `main` | `ghcr.io/justjoseorg/copilot-cli-unraid:stable` |
+| Beta (previews) | `beta` | `ghcr.io/justjoseorg/copilot-cli-unraid:beta` |
+
+Existing `:latest` installations continue to follow stable. Beta pushes never
+update `:stable` or `:latest`. Develop previews on `beta` and merge reviewed
+changes into `main` to promote them to stable; promotion is not automatic.
+Both branches initially contain the same code.
+
+The template offers **stable** and **beta** through Community Applications'
+branch selector. When installing from a manually imported XML template, set
+the **Repository** tag to `:stable` or `:beta` in **Add Container**. To switch an
+existing installation, change that tag in **Edit Container** and apply. Beta
+can include unfinished changes; back up `/config` before switching. Keep your
+existing paths and credentials, and never run two containers against the same
+`/config` directory at once.
+
+Keep the chosen moving tag, not a commit tag or digest, to receive updates.
+Editing the separate XML template alone does not rebuild the image.
 
 After the **Publish container image** workflow succeeds, use **Docker > Check
 for Updates** on Unraid, then apply the `copilot-cli` update. The workflow
@@ -203,9 +220,11 @@ The browser terminal has root access to the container, so it requires HTTP basic
 The GitHub Actions workflow checks the authenticated HTTP/WebSocket proxy,
 CLI startup, web authentication, and cross-container
 configuration/workspace/keyring/APK/pip/npm persistence before building
-`linux/amd64` and `linux/arm64` images. It publishes to GHCR when `main` is
-updated or a `v*` tag is pushed. Pull requests run the smoke test without
-publishing.
+`linux/amd64` and `linux/arm64` images. Pushes to `main` publish `:stable`,
+`:latest` and `:main`; pushes to `beta` publish only the `:beta` channel.
+A `v*` tag publishes version tags without moving either channel or `:latest`.
+Pull requests run the smoke test without publishing. Each published build
+also has a commit-SHA tag.
 
 The default Copilot version is pinned in `Dockerfile`. Change `COPILOT_VERSION`
 there to update published builds, or supply `--build-arg COPILOT_VERSION=...`

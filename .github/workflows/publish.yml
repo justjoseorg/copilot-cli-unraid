@@ -2,7 +2,7 @@ name: Publish container image
 
 on:
   push:
-    branches: [main]
+    branches: [main, beta]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -56,9 +56,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: latest=false
           tags: |
             type=ref,event=branch
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=stable,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=
@@ -89,4 +91,5 @@ jobs:
             echo 'On Unraid, use Docker > Check for Updates, then apply the copilot-cli update.'
             echo 'Automatic installation requires the CA Auto Update Applications plugin configured on the Unraid host.'
             echo 'Updating restarts the container and ends running terminal jobs.'
+            echo 'Choose :stable for main-branch releases or :beta for preview-branch releases. :latest remains a stable alias.'
           } >> "$GITHUB_STEP_SUMMARY"
