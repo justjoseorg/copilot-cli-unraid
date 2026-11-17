@@ -1,7 +1,6 @@
 const list = document.querySelector('#terminal-list');
 const panels = document.querySelector('#terminal-panels');
 const title = document.querySelector('#active-title');
-const rename = document.querySelector('#rename-terminal');
 const empty = document.querySelector('#empty-state');
 const notice = document.querySelector('#notice');
 const newButton = document.querySelector('#new-terminal');
@@ -15,10 +14,60 @@ const closeError = document.querySelector('#close-error');
 const confirmClose = document.querySelector('#confirm-close');
 const cancelClose = document.querySelector('#cancel-close');
 const terminals = new Map();
+const titleSaves = new Map();
 let selected = null;
+let editingTitle = null;
 let frame = null;
 let savingSettings = false;
 let closingTerminal = null;
+
+function refreshTitle() {
+  const pending = selected && titleSaves.get(selected.id);
+  title.disabled = !selected || Boolean(pending);
+  if (!editingTitle || editingTitle !== selected) {
+    title.value = pending?.name ?? selected?.name ?? '';
+  }
+}
+
+title.addEventListener('focus', () => { editingTitle = selected; });
+title.addEventListener('keydown', event => {
+  if (event.isComposing) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    editingTitle = null;
+    refreshTitle();
+    title.blur();
+  } else if (event.key === 'Enter') {
+    event.preventDefault();
+    return title.blur();
+  }
+});
+title.addEventListener('blur', async () => {
+  const terminal = editingTitle;
+  const name = title.value.trim();
+  editingTitle = null;
+  if (!terminal || !name || name === terminal.name) {
+    refreshTitle();
+    return;
+  }
+  titleSaves.set(terminal.id, { name });
+  refreshTitle();
+  try {
+    await api(`/${terminal.id}`, 'PATCH', { name });
+    await refresh();
+  } catch (error) {
+    showError(error);
+    if (selected === terminal) {
+      titleSaves.delete(terminal.id);
+      refreshTitle();
+      title.value = name;
+      title.focus();
+    }
+  } finally {
+    titleSaves.delete(terminal.id);
+    refreshTitle();
+  }
+});
 
 function setSidebarHidden(hidden) {
   sidebar.hidden = hidden;
@@ -111,6 +160,7 @@ confirmClose.addEventListener('click', async () => {
 
 function selectTerminal(terminal, reconnect = false) {
   if (selected === terminal && frame && !reconnect) return;
+  title.blur();
   selected = terminal;
   if (frame) frame.remove();
   frame = null;
@@ -119,8 +169,7 @@ function selectTerminal(terminal, reconnect = false) {
     if (item === selected) item.tab.setAttribute('aria-current', 'true');
     else item.tab.removeAttribute('aria-current');
   }
-  title.textContent = terminal?.name || 'Terminals';
-  rename.disabled = !terminal;
+  refreshTitle();
   empty.hidden = Boolean(terminal);
   if (!terminal) return;
   const attached = document.createElement('iframe');
@@ -139,7 +188,7 @@ function selectTerminal(terminal, reconnect = false) {
     for (const event of ['keydown', 'input', 'paste']) {
       attached.contentDocument.addEventListener(event, activity, true);
     }
-    if (frame === attached) attached.contentWindow.focus();
+    if (frame === attached && document.activeElement !== title) attached.contentWindow.focus();
   });
   panels.append(attached);
 }
@@ -171,7 +220,14 @@ async function refresh(preferredId) {
     if (ids.has(id)) continue;
     terminal.row.remove();
     terminals.delete(id);
-    if (selected === terminal) { selected = null; frame?.remove(); frame = null; }
+    if (selected === terminal) {
+      editingTitle = null;
+      title.blur();
+      selected = null;
+      frame?.remove();
+      frame = null;
+      refreshTitle();
+    }
   }
   for (const data of current) {
     const terminal = terminals.get(data.id) || makeTerminal(data);
@@ -184,7 +240,7 @@ async function refresh(preferredId) {
     terminals.set(data.id, terminal);
     if (terminal.row.parentNode !== list) list.append(terminal.row);
     if (selected === terminal) {
-      title.textContent = data.name;
+      refreshTitle();
       if (frame) frame.title = data.name;
     }
   }
@@ -209,14 +265,6 @@ async function newTerminal() {
 }
 
 newButton.addEventListener('click', newTerminal);
-rename.addEventListener('click', async () => {
-  if (!selected) return;
-  const terminal = selected;
-  const name = prompt('Terminal name', terminal.name);
-  if (!name?.trim()) return;
-  try { await api(`/${terminal.id}`, 'PATCH', { name: name.trim() }); await refresh(); }
-  catch (error) { showError(error); }
-});
 let polling = false;
 async function poll() {
   if (polling) return;

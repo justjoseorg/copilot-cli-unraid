@@ -54,7 +54,9 @@ browser access, not your GitHub account or the root Linux user.
 ## Multiple terminals, one shared environment
 
 Use **New terminal** in the left sidebar to run additional tasks. Select a
-terminal to switch to it, **Rename** to label it, or its **x** button to close it.
+terminal to switch to it, edit its title at the top to label it, or use its **x**
+button to close it. Press **Enter** or click away to save a title, or **Escape**
+to cancel. Names update across devices without reconnecting the terminal.
 Switching keeps the shell and its running task alive.
 
 All terminals use the same Copilot/GitHub sign-in, mounted files, permissions

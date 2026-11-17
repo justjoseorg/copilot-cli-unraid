@@ -157,10 +157,11 @@ test('shared cleanup settings require authentication, same origin and valid minu
   assert.deepEqual(await (await update({ unusedMinutes: 0 })).json(), { unusedMinutes: 0 });
 });
 
-async function browser({ failClose = false } = {}) {
+async function browser({ failClose = false, failRename = false, pauseRename = false } = {}) {
   const elements = new Map();
   const requests = [];
   let poll;
+  let releaseRename;
   const document = {
     activeElement: null,
     addEventListener() {},
@@ -188,12 +189,22 @@ async function browser({ failClose = false } = {}) {
       },
       showModal() { this.open = true; },
       close() { this.open = false; this.listeners.close?.(); },
-      focus() { document.activeElement = this; },
+      focus() {
+        if (document.activeElement === this) return;
+        document.activeElement?.blur();
+        document.activeElement = this;
+        this.listeners.focus?.();
+      },
+      blur() {
+        if (document.activeElement !== this) return;
+        document.activeElement = null;
+        return this.listeners.blur?.();
+      },
       checkValidity() { return this.value !== '' && Number(this.value) >= 0; },
       get valueAsNumber() { return this.value === '' ? NaN : Number(this.value); },
     };
   }
-  for (const id of ['terminal-list', 'terminal-panels', 'active-title', 'rename-terminal',
+  for (const id of ['terminal-list', 'terminal-panels', 'active-title',
     'empty-state', 'notice', 'new-terminal', 'terminal-sidebar', 'hide-sidebar',
     'show-sidebar', 'unused-minutes', 'close-dialog', 'close-message', 'close-error',
     'confirm-close', 'cancel-close']) {
@@ -213,7 +224,12 @@ async function browser({ failClose = false } = {}) {
         if (options.method === 'PATCH') settings = JSON.parse(options.body);
         result = settings;
       } else {
-        if (options.method === 'DELETE') {
+        if (options.method === 'PATCH') {
+          if (pauseRename) await new Promise(resolve => { releaseRename = resolve; });
+          if (failRename) return { ok: false };
+          current.find(terminal => path.endsWith(terminal.id)).name = JSON.parse(options.body).name;
+          result = { ok: true };
+        } else if (options.method === 'DELETE') {
           if (failClose) return { ok: false };
           current = [];
           result = { ok: true };
@@ -226,6 +242,9 @@ async function browser({ failClose = false } = {}) {
   return {
     elements, document, requests, poll,
     setCloseFailure: value => { failClose = value; },
+    setRenameFailure: value => { failRename = value; },
+    releaseRename: () => { pauseRename = false; releaseRename(); },
+    setTerminals: value => { current = value; },
     removeTerminals: () => { current = []; },
   };
 }
@@ -335,4 +354,109 @@ test('editable cleanup minutes save custom and disabled values without overwriti
   assert.equal(requests.length, count);
   assert.equal(elements.get('#notice').hidden, false);
   assert.equal(input.disabled, false);
+});
+
+test('inline title keeps drafts through polling and Enter saves without reconnecting', async () => {
+  const { elements, requests, poll } = await browser();
+  const title = elements.get('#active-title');
+  const frame = elements.get('#terminal-panels').children[0];
+  title.focus();
+  title.value = '  Build logs  ';
+  title.listeners.keydown({ key: 'Enter', isComposing: true });
+  assert.equal(title.value, '  Build logs  ');
+  await poll();
+  assert.equal(title.value, '  Build logs  ');
+  await title.listeners.keydown({ key: 'Enter', preventDefault() {} });
+  assert.equal(title.value, 'Build logs');
+  assert.equal(title.disabled, false);
+  assert.equal(elements.get('#terminal-list').children[0].children[0].textContent, 'Build logs');
+  assert.deepEqual(requests.filter(request => request.method === 'PATCH').map(request => [
+    request.path, JSON.parse(request.body),
+  ]), [[`/api/terminals/${sessionId}`, { name: 'Build logs' }]]);
+  assert.equal(elements.get('#terminal-panels').children[0], frame);
+  assert.equal(frame.removed, undefined);
+});
+
+test('Escape and empty inline titles cancel while remote names still update', async () => {
+  const { elements, requests, poll, setTerminals } = await browser();
+  const title = elements.get('#active-title');
+  title.focus();
+  title.value = 'Unfinished';
+  setTerminals([{ id: sessionId, name: 'Renamed elsewhere' }]);
+  await poll();
+  assert.equal(title.value, 'Unfinished');
+  title.listeners.keydown({ key: 'Escape', preventDefault() {} });
+  assert.equal(title.value, 'Renamed elsewhere');
+  title.focus();
+  title.value = '   ';
+  await title.blur();
+  assert.equal(title.value, 'Renamed elsewhere');
+  assert.equal(requests.some(request => request.method === 'PATCH'), false);
+});
+
+test('blur saves the edited terminal even when switching while its request is pending', async () => {
+  const { elements, poll, requests, setTerminals, releaseRename } = await browser({ pauseRename: true });
+  const otherId = 'b'.repeat(32);
+  setTerminals([{ id: sessionId, name: 'Terminal 1' }, { id: otherId, name: 'Terminal 2' }]);
+  await poll();
+  const title = elements.get('#active-title');
+  title.focus();
+  title.value = 'First shell';
+  const saved = title.blur();
+  assert.equal(title.disabled, true);
+  await poll();
+  assert.equal(title.value, 'First shell');
+  elements.get('#terminal-list').children[1].children[0].listeners.click();
+  assert.equal(title.value, 'Terminal 2');
+  assert.equal(title.disabled, false);
+  releaseRename();
+  await saved;
+  assert.equal(title.value, 'Terminal 2');
+  assert.equal(elements.get('#terminal-list').children[0].children[0].textContent, 'First shell');
+  assert.equal(requests.find(request => request.method === 'PATCH').path, `/api/terminals/${sessionId}`);
+});
+
+test('failed inline renames retain the draft for retry without replacing the shell', async () => {
+  const { elements, document, poll, setRenameFailure } = await browser({ failRename: true });
+  const title = elements.get('#active-title');
+  const frame = elements.get('#terminal-panels').children[0];
+  title.focus();
+  title.value = 'Retry this';
+  await title.blur();
+  assert.equal(title.value, 'Retry this');
+  assert.equal(document.activeElement, title);
+  assert.equal(title.disabled, false);
+  assert.equal(elements.get('#notice').hidden, false);
+  await poll();
+  assert.equal(title.value, 'Retry this');
+  setRenameFailure(false);
+  await title.blur();
+  assert.equal(elements.get('#terminal-list').children[0].children[0].textContent, 'Retry this');
+  assert.equal(elements.get('#terminal-panels').children[0], frame);
+});
+
+test('a terminal closed elsewhere cancels its inline draft without submitting a rename', async () => {
+  const { elements, requests, poll, removeTerminals } = await browser();
+  const title = elements.get('#active-title');
+  title.focus();
+  title.value = 'Not saved';
+  removeTerminals();
+  await poll();
+  assert.equal(title.value, '');
+  assert.equal(title.disabled, true);
+  assert.equal(requests.some(request => request.method === 'PATCH'), false);
+});
+
+test('a loading terminal does not steal focus or submit an inline title draft', async () => {
+  const { elements, document, requests } = await browser();
+  const title = elements.get('#active-title');
+  const frame = elements.get('#terminal-panels').children[0];
+  frame.contentDocument = { addEventListener() {} };
+  frame.contentWindow = { focus() { document.activeElement = frame; } };
+  title.focus();
+  title.value = 'Still typing';
+  frame.listeners.load();
+  assert.equal(document.activeElement, title);
+  assert.equal(title.value, 'Still typing');
+  assert.equal(requests.some(request => request.method === 'PATCH'), false);
 });

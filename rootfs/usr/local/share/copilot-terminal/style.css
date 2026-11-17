@@ -79,10 +79,23 @@ header {
   border-bottom: 1px solid #303344;
 }
 .heading { flex: 1; min-width: 0; }
-h1 { margin: 0 0 3px; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+h1 { margin: 0 0 3px; font-size: 15px; font-weight: 600; }
 .workspace { font: 12px monospace; color: #a4aec1; }
-#rename-terminal { border: 1px solid #42465a; border-radius: 5px; padding: 6px 10px; background: #232635; }
-#rename-terminal:disabled { opacity: .4; cursor: default; }
+#active-title {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 3px 5px;
+  margin-left: -6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-overflow: ellipsis;
+}
+#active-title:enabled:hover { border-color: #42465a; }
+#active-title:focus { outline: 2px solid #67e8f9; background: #232635; }
 #terminal-panels { position: relative; flex: 1; min-height: 0; }
 .terminal-frame { display: block; position: absolute; inset: 0; border: 0; width: 100%; height: 100%; background: #000; }
 .terminal-frame[hidden], #empty-state[hidden] { display: none; }

@@ -39,10 +39,9 @@
     <header>
       <button id="show-sidebar" type="button" aria-label="Show terminal sidebar" title="Show terminal sidebar" aria-controls="terminal-sidebar" aria-expanded="true" hidden><span aria-hidden="true">&gt;_</span></button>
       <div class="heading">
-        <h1 id="active-title">Terminals</h1>
+        <h1><input id="active-title" type="text" aria-label="Terminal name" placeholder="Terminals" maxlength="200" title="Click to rename. Enter or click away to save; Escape to cancel." autocomplete="off" disabled></h1>
         <span class="workspace">/Storage/repos</span>
       </div>
-      <button id="rename-terminal" type="button" disabled>Rename</button>
     </header>
     <p id="notice" role="status" hidden></p>
     <div id="terminal-panels">
