@@ -157,7 +157,7 @@ test('shared cleanup settings require authentication, same origin and valid minu
   assert.deepEqual(await (await update({ unusedMinutes: 0 })).json(), { unusedMinutes: 0 });
 });
 
-async function browser() {
+async function browser({ failClose = false } = {}) {
   const elements = new Map();
   const requests = [];
   let poll;
@@ -174,8 +174,20 @@ async function browser() {
       setAttribute(name, value) { this.attributes[name] = value; },
       removeAttribute(name) { delete this.attributes[name]; },
       addEventListener(name, callback) { this.listeners[name] = callback; },
-      append(...items) { this.children.push(...items); },
-      remove() { this.removed = true; },
+      append(...items) {
+        this.appends = (this.appends || 0) + 1;
+        this.children.push(...items);
+        for (const item of items) item.parentNode = this;
+      },
+      remove() {
+        this.removed = true;
+        if (this.parentNode) {
+          this.parentNode.children = this.parentNode.children.filter(item => item !== this);
+          this.parentNode = null;
+        }
+      },
+      showModal() { this.open = true; },
+      close() { this.open = false; this.listeners.close?.(); },
       focus() { document.activeElement = this; },
       checkValidity() { return this.value !== '' && Number(this.value) >= 0; },
       get valueAsNumber() { return this.value === '' ? NaN : Number(this.value); },
@@ -183,11 +195,13 @@ async function browser() {
   }
   for (const id of ['terminal-list', 'terminal-panels', 'active-title', 'rename-terminal',
     'empty-state', 'notice', 'new-terminal', 'terminal-sidebar', 'hide-sidebar',
-    'show-sidebar', 'unused-minutes']) {
+    'show-sidebar', 'unused-minutes', 'close-dialog', 'close-message', 'close-error',
+    'confirm-close', 'cancel-close']) {
     elements.set(`#${id}`, element('div'));
   }
   elements.get('#show-sidebar').hidden = true;
   let settings = { unusedMinutes: 1 };
+  let current = [{ id: sessionId, name: 'Terminal 1' }];
   const source = await readFile(new URL('../rootfs/usr/local/share/copilot-terminal/app.js', import.meta.url), 'utf8');
   vm.runInNewContext(source, {
     document,
@@ -199,15 +213,79 @@ async function browser() {
         if (options.method === 'PATCH') settings = JSON.parse(options.body);
         result = settings;
       } else {
-        const terminal = { id: sessionId, name: 'Terminal 1' };
-        result = options.method === 'POST' ? terminal : { terminals: [terminal] };
+        if (options.method === 'DELETE') {
+          if (failClose) return { ok: false };
+          current = [];
+          result = { ok: true };
+        } else result = options.method === 'POST' ? current[0] : { terminals: current };
       }
       return { ok: true, json: async () => result };
     },
   });
   await new Promise(resolve => setImmediate(resolve));
-  return { elements, document, requests, poll };
+  return {
+    elements, document, requests, poll,
+    setCloseFailure: value => { failClose = value; },
+    removeTerminals: () => { current = []; },
+  };
 }
+
+test('polling keeps terminal buttons attached instead of interrupting clicks', async () => {
+  const { elements, poll } = await browser();
+  const list = elements.get('#terminal-list');
+  const row = list.children[0];
+  const appends = list.appends;
+  await poll();
+  await poll();
+  assert.equal(list.appends, appends);
+  assert.equal(list.children[0], row);
+});
+
+test('terminal close uses an in-page confirmation and cancellation preserves the terminal', async () => {
+  const { elements, requests } = await browser();
+  const list = elements.get('#terminal-list');
+  const close = list.children[0].children[1];
+  const dialog = elements.get('#close-dialog');
+  close.listeners.click();
+  assert.equal(dialog.open, true);
+  assert.match(elements.get('#close-message').textContent, /Terminal 1/);
+  assert.equal(requests.some(request => request.method === 'DELETE'), false);
+  elements.get('#cancel-close').listeners.click();
+  assert.equal(dialog.open, false);
+  assert.equal(list.children.length, 1);
+  close.listeners.click();
+  await elements.get('#confirm-close').listeners.click();
+  assert.equal(dialog.open, false);
+  assert.equal(list.children.length, 0);
+  assert.equal(elements.get('#empty-state').hidden, false);
+  assert.deepEqual(requests.filter(request => request.method === 'DELETE').map(request => request.path),
+    [`/api/terminals/${sessionId}`]);
+});
+
+test('close failures remain visible through polling and can be retried', async () => {
+  const { elements, poll, setCloseFailure } = await browser({ failClose: true });
+  elements.get('#terminal-list').children[0].children[1].listeners.click();
+  const confirm = elements.get('#confirm-close');
+  await confirm.listeners.click();
+  assert.equal(elements.get('#close-dialog').open, true);
+  assert.equal(elements.get('#close-error').hidden, false);
+  assert.equal(confirm.disabled, false);
+  await poll();
+  assert.equal(elements.get('#close-error').hidden, false);
+  setCloseFailure(false);
+  await confirm.listeners.click();
+  assert.equal(elements.get('#close-dialog').open, false);
+  assert.equal(elements.get('#terminal-list').children.length, 0);
+});
+
+test('confirmation closes when the last terminal disappears on another device', async () => {
+  const { elements, poll, removeTerminals } = await browser();
+  elements.get('#terminal-list').children[0].children[1].listeners.click();
+  removeTerminals();
+  await poll();
+  assert.equal(elements.get('#close-dialog').open, false);
+  assert.equal(elements.get('#empty-state').hidden, false);
+});
 
 test('hiding the sidebar exposes a circular restore control without reconnecting the terminal', async () => {
   const { elements, document, requests } = await browser();

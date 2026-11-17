@@ -9,10 +9,16 @@ const sidebar = document.querySelector('#terminal-sidebar');
 const hideSidebar = document.querySelector('#hide-sidebar');
 const showSidebar = document.querySelector('#show-sidebar');
 const unusedMinutes = document.querySelector('#unused-minutes');
+const closeDialog = document.querySelector('#close-dialog');
+const closeMessage = document.querySelector('#close-message');
+const closeError = document.querySelector('#close-error');
+const confirmClose = document.querySelector('#confirm-close');
+const cancelClose = document.querySelector('#cancel-close');
 const terminals = new Map();
 let selected = null;
 let frame = null;
 let savingSettings = false;
+let closingTerminal = null;
 
 function setSidebarHidden(hidden) {
   sidebar.hidden = hidden;
@@ -74,6 +80,35 @@ function showError(error) {
   notice.hidden = false;
 }
 
+cancelClose.addEventListener('click', () => closeDialog.close());
+closeDialog.addEventListener('close', () => { closingTerminal = null; });
+closeDialog.addEventListener('cancel', event => {
+  if (confirmClose.disabled) event.preventDefault();
+});
+confirmClose.addEventListener('click', async () => {
+  if (!closingTerminal || confirmClose.disabled) return;
+  const terminal = closingTerminal;
+  confirmClose.disabled = true;
+  cancelClose.disabled = true;
+  confirmClose.textContent = 'Closing...';
+  closeError.hidden = true;
+  try {
+    await api(`/${terminal.id}`, 'DELETE');
+    closeDialog.close();
+    await refresh();
+    newButton.focus();
+  } catch (error) {
+    if (closeDialog.open) {
+      closeError.textContent = 'Unable to close this terminal. Check the connection and try again.';
+      closeError.hidden = false;
+    } else showError(error);
+  } finally {
+    confirmClose.disabled = false;
+    cancelClose.disabled = false;
+    confirmClose.textContent = 'Close terminal';
+  }
+});
+
 function selectTerminal(terminal, reconnect = false) {
   if (selected === terminal && frame && !reconnect) return;
   selected = terminal;
@@ -119,10 +154,11 @@ function makeTerminal(data) {
   terminal.close.type = 'button';
   terminal.close.className = 'close-terminal';
   terminal.close.textContent = 'x';
-  terminal.close.addEventListener('click', async () => {
-    if (!confirm(`Close "${terminal.name}" on all devices? Running programs will stop.`)) return;
-    try { await api(`/${terminal.id}`, 'DELETE'); await refresh(); }
-    catch (error) { showError(error); }
+  terminal.close.addEventListener('click', () => {
+    closingTerminal = terminal;
+    closeMessage.textContent = `Close "${terminal.name}" on all devices? Running programs will stop.`;
+    closeError.hidden = true;
+    closeDialog.showModal();
   });
   terminal.row.append(terminal.tab, terminal.close);
   return terminal;
@@ -146,12 +182,13 @@ async function refresh(preferredId) {
     terminal.close.setAttribute('aria-label', `Close ${data.name}`);
     terminal.row.dataset.busy = String(data.busy);
     terminals.set(data.id, terminal);
-    list.append(terminal.row);
+    if (terminal.row.parentNode !== list) list.append(terminal.row);
     if (selected === terminal) {
       title.textContent = data.name;
       if (frame) frame.title = data.name;
     }
   }
+  if (closingTerminal && !terminals.has(closingTerminal.id)) closeDialog.close();
   const preferred = terminals.get(preferredId);
   if (preferred) selectTerminal(preferred);
   else if (!selected) {

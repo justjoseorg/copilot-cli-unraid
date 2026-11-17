@@ -88,6 +88,15 @@ h1 { margin: 0 0 3px; font-size: 15px; font-weight: 600; overflow: hidden; text-
 .terminal-frame[hidden], #empty-state[hidden] { display: none; }
 #empty-state { padding: 40px 24px; color: #a4aec1; }
 #notice { color: #fecaca; padding: 8px 18px; margin: 0; background: #482b35; }
+#close-dialog { width: min(420px, calc(100vw - 32px)); padding: 24px; color: inherit; background: #171924; border: 1px solid #42465a; border-radius: 10px; }
+#close-dialog::backdrop { background: #0009; }
+#close-dialog h2 { margin: 0; font-size: 18px; }
+#close-message { line-height: 1.5; overflow-wrap: anywhere; }
+#close-error { color: #fecaca; }
+.dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.dialog-actions button { padding: 8px 12px; border: 1px solid #42465a; border-radius: 5px; background: #232635; }
+#confirm-close { background: #653441; }
+.dialog-actions button:disabled { opacity: .5; cursor: wait; }
 @media (max-width: 600px) {
   .sidebar { width: 150px; padding: 14px 6px 10px; }
   .brand { font-size: 14px; padding: 0 4px 16px; }

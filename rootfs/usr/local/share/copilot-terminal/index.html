@@ -49,5 +49,14 @@
       <div id="empty-state">No terminals open. Select <strong>New terminal</strong> to start one.</div>
     </div>
   </main>
+  <dialog id="close-dialog" aria-labelledby="close-title" aria-describedby="close-message">
+    <h2 id="close-title">Close terminal?</h2>
+    <p id="close-message"></p>
+    <p id="close-error" role="alert" hidden></p>
+    <div class="dialog-actions">
+      <button id="cancel-close" type="button" autofocus>Cancel</button>
+      <button id="confirm-close" type="button">Close terminal</button>
+    </div>
+  </dialog>
 </body>
 </html>
