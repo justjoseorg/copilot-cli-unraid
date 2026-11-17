@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
 const execute = promisify(execFile);
@@ -39,6 +39,7 @@ export class TerminalSessions {
     unusedSeconds = 60,
     clock = Date.now,
     children = hasChildren,
+    settingsFile,
     run = async args => (await execute('tmux', ['-S', socket, ...args], {
       encoding: 'utf8', timeout: 5000,
     })).stdout,
@@ -50,9 +51,47 @@ export class TerminalSessions {
     this.clock = clock;
     this.children = children;
     this.run = run;
+    this.settingsFile = settingsFile;
+    this.settingsUpdate = Promise.resolve();
   }
 
   has(id) { return this.records.has(id); }
+
+  settings() { return { unusedMinutes: this.unusedSeconds / 60 }; }
+
+  validateSettings(settings) {
+    const minutes = settings?.unusedMinutes;
+    if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes < 0
+      || minutes * 60_000 > Number.MAX_SAFE_INTEGER) {
+      throw new TypeError('Unused shell cleanup must be a nonnegative number of minutes (0 disables it).');
+    }
+    return { unusedMinutes: minutes };
+  }
+
+  async loadSettings() {
+    if (!this.settingsFile) return;
+    let saved;
+    try { saved = await readFile(this.settingsFile, 'utf8'); }
+    catch (error) {
+      if (error.code === 'ENOENT') return;
+      throw error;
+    }
+    this.unusedSeconds = this.validateSettings(JSON.parse(saved)).unusedMinutes * 60;
+  }
+
+  async updateSettings(value) {
+    const settings = this.validateSettings(value);
+    const update = this.settingsUpdate.then(async () => {
+      if (this.settingsFile) {
+        await writeFile(`${this.settingsFile}.tmp`, `${JSON.stringify(settings)}\n`, { mode: 0o600 });
+        await rename(`${this.settingsFile}.tmp`, this.settingsFile);
+      }
+      this.unusedSeconds = settings.unusedMinutes * 60;
+      return this.settings();
+    });
+    this.settingsUpdate = update.catch(() => {});
+    return update;
+  }
 
   async create() {
     const id = randomBytes(16).toString('hex');

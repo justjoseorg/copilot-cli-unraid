@@ -66,6 +66,25 @@ export function createTerminalServer({ username, password, backendPort = 7682, s
       return;
     }
     if (path.startsWith('/api/')) {
+      if (path === '/api/settings') {
+        if (!['GET', 'PATCH'].includes(request.method)) {
+          response.writeHead(405).end(); return;
+        }
+        if (request.method === 'PATCH' && !sameOrigin(request)) {
+          response.writeHead(403).end(); return;
+        }
+        try {
+          const settings = request.method === 'GET' ? sessions.settings()
+            : await sessions.updateSettings(await readJson(request));
+          response.writeHead(200, {
+            'Content-Type': 'application/json', 'Cache-Control': 'no-store',
+          }).end(JSON.stringify(settings));
+        } catch (error) {
+          response.writeHead(error instanceof TypeError || error instanceof SyntaxError ? 400 : 503)
+            .end('Unable to update cleanup settings');
+        }
+        return;
+      }
       const match = /^\/api\/terminals(?:\/([a-f0-9]{32})(\/activity)?)?$/.exec(path);
       if (!match) { response.writeHead(404).end(); return; }
       if (request.method !== 'GET' && !sameOrigin(request)) {
@@ -198,7 +217,9 @@ async function main() {
   }
   const sessions = new TerminalSessions({
     idleSeconds: timeouts.TERMINAL_IDLE_TIMEOUT, unusedSeconds: timeouts.TERMINAL_UNUSED_TIMEOUT,
+    settingsFile: '/config/terminal-settings.json',
   });
+  await sessions.loadSettings();
   let sweeping = false;
   const cleanup = setInterval(async () => {
     if (sweeping) return;

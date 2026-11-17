@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { TerminalSessions } from '../rootfs/usr/local/lib/terminal-sessions.mjs';
 
 function setup({ idleSeconds = 86400, unusedSeconds = 60 } = {}) {
@@ -88,4 +91,63 @@ test('a job starting during cleanup is detected by the final inspection', async 
   await state.sessions.sweep();
   assert.equal(state.sessions.has(terminal.id), true);
   assert.equal(inspections, 2);
+});
+
+test('editable unused minutes apply immediately without changing used-shell retention or job protection', async () => {
+  const state = setup();
+  const unused = await state.sessions.create();
+  const used = await state.sessions.create();
+  state.sessions.activity(used.id);
+  await state.sessions.updateSettings({ unusedMinutes: 0.5 });
+  state.advance(30_001);
+  await state.sessions.sweep();
+  assert.equal(state.sessions.has(unused.id), false);
+  assert.equal(state.sessions.has(used.id), true);
+  const protectedTerminal = await state.sessions.create();
+  state.background(true);
+  state.advance(30_001);
+  await state.sessions.sweep();
+  assert.equal(state.sessions.has(protectedTerminal.id), true);
+  state.background(false);
+  await state.sessions.sweep();
+  assert.equal(state.sessions.has(protectedTerminal.id), true);
+  assert.equal(state.sessions.has(used.id), true);
+  const disabled = await state.sessions.create();
+  await state.sessions.updateSettings({ unusedMinutes: 0 });
+  state.advance(100_000);
+  await state.sessions.sweep();
+  assert.equal(state.sessions.has(disabled.id), true);
+  assert.equal(state.sessions.idleSeconds, 86400);
+});
+
+test('cleanup settings persist and override the initial environment default', async context => {
+  const directory = await mkdtemp(join(tmpdir(), 'copilot-settings-'));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const settingsFile = join(directory, 'terminal-settings.json');
+  const sessions = new TerminalSessions({ settingsFile });
+  await sessions.loadSettings();
+  assert.deepEqual(sessions.settings(), { unusedMinutes: 1 });
+  await Promise.all([
+    sessions.updateSettings({ unusedMinutes: 5 }),
+    sessions.updateSettings({ unusedMinutes: 2.5 }),
+  ]);
+  assert.deepEqual(JSON.parse(await readFile(settingsFile, 'utf8')), { unusedMinutes: 2.5 });
+  const restarted = new TerminalSessions({ settingsFile, unusedSeconds: 120 });
+  await restarted.loadSettings();
+  assert.deepEqual(restarted.settings(), { unusedMinutes: 2.5 });
+});
+
+test('invalid or unwritable cleanup settings leave the active timeout unchanged', async context => {
+  const directory = await mkdtemp(join(tmpdir(), 'copilot-settings-'));
+  context.after(() => rm(directory, { recursive: true, force: true }));
+  const sessions = new TerminalSessions({ settingsFile: join(directory, 'missing', 'settings.json') });
+  for (const unusedMinutes of [-1, null, '5', NaN, Infinity, Number.MAX_VALUE]) {
+    await assert.rejects(sessions.updateSettings({ unusedMinutes }), TypeError);
+  }
+  await assert.rejects(sessions.updateSettings(null), TypeError);
+  await assert.rejects(sessions.updateSettings({ unusedMinutes: 5 }), /ENOENT/);
+  assert.deepEqual(sessions.settings(), { unusedMinutes: 1 });
+  sessions.settingsFile = join(directory, 'settings.json');
+  await sessions.updateSettings({ unusedMinutes: 10 });
+  assert.deepEqual(sessions.settings(), { unusedMinutes: 10 });
 });

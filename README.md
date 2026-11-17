@@ -68,6 +68,15 @@ discarded after **60 seconds**, so opening another device does not leave empty
 terminals behind. Once you type, paste, rename a terminal or run a job, it is
 kept for **24 hours after activity**.
 
+The editable minutes dropdown beside **Unused shells clear automatically**
+changes the unused-shell grace period immediately for all devices. Choose a
+preset or type any nonnegative number of minutes, including fractions; **0**
+disables unused-shell cleanup. The value is saved in
+`/config/terminal-settings.json` and survives container updates. Once saved,
+it overrides `TERMINAL_UNUSED_TIMEOUT`; delete that file and restart to use
+the template/environment default again. Previously used shells still use
+`TERMINAL_IDLE_TIMEOUT`, and running jobs remain protected.
+
 Foreground and background jobs prevent automatic cleanup. The retention clock
 restarts after a job finishes; inspection failures conservatively keep shells.
 These defaults are editable through `TERMINAL_UNUSED_TIMEOUT` and
@@ -77,6 +86,30 @@ Closing or reloading a browser page only detaches from its tmux-backed shells.
 The **x** button explicitly closes that terminal on all devices and can stop
 its programs. Shells survive browser disconnections, not container restarts;
 restart/update the container only when its running tasks can be interrupted.
+
+Use **Hide** at the top of the sidebar to give the terminal more space.
+Click the circular **>_** button in the header to bring the sidebar back.
+Hiding or showing the sidebar does not reconnect or close the active terminal.
+
+## Updates on Unraid
+
+Every push to `main` runs the tests and publishes a new
+`ghcr.io/justjoseorg/copilot-cli-unraid:latest` image if they pass. Keep the
+Unraid container's **Repository** set to that exact tag, not a commit tag or
+digest. Changes on other branches become updates after merging into `main`;
+editing the separate XML template alone does not rebuild the image.
+
+After the **Publish container image** workflow succeeds, use **Docker > Check
+for Updates** on Unraid, then apply the `copilot-cli` update. The workflow
+summary includes the published tags and digest. Unraid checks the registry;
+GitHub does not connect to your Unraid host.
+
+For unattended installation, install **CA Auto Update Applications** from
+Unraid's Apps tab, enable it for `copilot-cli`, and choose an update schedule.
+This is a host-side setting, not something the XML template can enable.
+Schedule updates for a time when no terminal work is running: applying an
+update restarts the container and ends all its shells and jobs. Retain the
+existing `/config` and repositories mappings to preserve files and sign-in.
 
 ## Persistent system keyring
 

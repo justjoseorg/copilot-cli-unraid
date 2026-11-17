@@ -8,14 +8,36 @@
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <aside class="sidebar" aria-label="Terminal sidebar">
-    <div class="brand"><span aria-hidden="true">&gt;_</span> Copilot CLI</div>
+  <aside id="terminal-sidebar" class="sidebar" aria-label="Terminal sidebar">
+    <div class="brand">
+      <div><span aria-hidden="true">&gt;_</span> Copilot CLI</div>
+      <button id="hide-sidebar" type="button" aria-controls="terminal-sidebar" aria-expanded="true">Hide</button>
+    </div>
     <button id="new-terminal" class="new-terminal" type="button">+ New terminal</button>
     <nav id="terminal-list" aria-label="Terminals"></nav>
-    <p class="sidebar-note">Shared across devices.<br>Unused shells clear automatically.</p>
+    <div class="sidebar-note">
+      <p>Shared across devices.</p>
+      <div class="cleanup-setting">
+        <label for="unused-minutes">Unused shells clear automatically.</label>
+        <div class="cleanup-value">
+          <input id="unused-minutes" type="number" min="0" step="any" list="cleanup-presets" aria-label="Unused shell cleanup in minutes" aria-describedby="cleanup-help" disabled>
+          <span>minutes</span>
+        </div>
+      </div>
+      <datalist id="cleanup-presets">
+        <option value="1"></option>
+        <option value="5"></option>
+        <option value="15"></option>
+        <option value="30"></option>
+        <option value="60"></option>
+        <option value="0">Disabled</option>
+      </datalist>
+      <p id="cleanup-help">0 disables cleanup. Running jobs are kept.</p>
+    </div>
   </aside>
   <main>
     <header>
+      <button id="show-sidebar" type="button" aria-label="Show terminal sidebar" title="Show terminal sidebar" aria-controls="terminal-sidebar" aria-expanded="true" hidden><span aria-hidden="true">&gt;_</span></button>
       <div class="heading">
         <h1 id="active-title">Terminals</h1>
         <span class="workspace">/Storage/repos</span>

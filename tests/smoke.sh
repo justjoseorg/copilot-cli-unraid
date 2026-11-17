@@ -76,6 +76,15 @@ test "$code" = 200
     const terminal = await created.json();
     const listed = await fetch(origin + "/api/terminals", { headers });
     assert((await listed.json()).terminals.some(item => item.id === terminal.id));
+    const settings = await fetch(origin + "/api/settings", { headers });
+    assert.deepEqual(await settings.json(), { unusedMinutes: 1 });
+    const changed = await fetch(origin + "/api/settings", {
+      method: "PATCH",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ unusedMinutes: 2.5 }),
+    });
+    assert.equal(changed.status, 200);
+    assert.deepEqual(await changed.json(), { unusedMinutes: 2.5 });
     const closed = await fetch(origin + "/api/terminals/" + terminal.id, { method: "DELETE", headers });
     assert.equal(closed.status, 200);
 '
@@ -103,6 +112,14 @@ test "$code" = 200
 
 "$runtime" rm -f "$container" >/dev/null
 start
+"$runtime" exec "$container" node --input-type=module -e '
+    import assert from "node:assert/strict";
+    const headers = {
+        Authorization: "Basic " + Buffer.from(process.env.WEB_TERMINAL_USER + ":" + process.env.WEB_TERMINAL_PASSWORD).toString("base64"),
+    };
+    const settings = await fetch("http://127.0.0.1:7681/api/settings", { headers });
+    assert.deepEqual(await settings.json(), { unusedMinutes: 2.5 });
+'
 "$runtime" exec "$container" sh -ec '
     test -f /config/.copilot/container-smoke-state
     test -f /Storage/repos/container-smoke-state

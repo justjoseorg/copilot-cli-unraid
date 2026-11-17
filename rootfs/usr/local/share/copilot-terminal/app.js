@@ -5,9 +5,59 @@ const rename = document.querySelector('#rename-terminal');
 const empty = document.querySelector('#empty-state');
 const notice = document.querySelector('#notice');
 const newButton = document.querySelector('#new-terminal');
+const sidebar = document.querySelector('#terminal-sidebar');
+const hideSidebar = document.querySelector('#hide-sidebar');
+const showSidebar = document.querySelector('#show-sidebar');
+const unusedMinutes = document.querySelector('#unused-minutes');
 const terminals = new Map();
 let selected = null;
 let frame = null;
+let savingSettings = false;
+
+function setSidebarHidden(hidden) {
+  sidebar.hidden = hidden;
+  showSidebar.hidden = !hidden;
+  hideSidebar.setAttribute('aria-expanded', String(!hidden));
+  showSidebar.setAttribute('aria-expanded', String(!hidden));
+  (hidden ? showSidebar : hideSidebar).focus();
+}
+
+hideSidebar.addEventListener('click', () => setSidebarHidden(true));
+showSidebar.addEventListener('click', () => setSidebarHidden(false));
+
+async function cleanupSettings(method = 'GET', body) {
+  const response = await fetch('/api/settings', {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error('Unable to update cleanup settings. Check the connection and try again.');
+  const settings = await response.json();
+  if (method === 'GET' && savingSettings) return;
+  if (method !== 'GET' || document.activeElement !== unusedMinutes) {
+    unusedMinutes.value = String(settings.unusedMinutes);
+  }
+  unusedMinutes.disabled = false;
+}
+
+unusedMinutes.addEventListener('change', async () => {
+  if (savingSettings) return;
+  const minutes = unusedMinutes.valueAsNumber;
+  if (!unusedMinutes.checkValidity() || !Number.isFinite(minutes)) {
+    showError(new Error('Enter a nonnegative number of minutes (0 disables cleanup).'));
+    return;
+  }
+  savingSettings = true;
+  unusedMinutes.disabled = true;
+  try {
+    await cleanupSettings('PATCH', { unusedMinutes: minutes });
+    notice.hidden = true;
+  } catch (error) { showError(error); }
+  finally {
+    savingSettings = false;
+    unusedMinutes.disabled = false;
+  }
+});
 
 async function api(path = '', method = 'GET', body) {
   const response = await fetch(`/api/terminals${path}`, {
@@ -134,7 +184,10 @@ let polling = false;
 async function poll() {
   if (polling) return;
   polling = true;
-  try { await refresh(); }
+  try {
+    await refresh();
+    if (!savingSettings) await cleanupSettings();
+  }
   catch (error) { showError(error); }
   finally { polling = false; }
 }
@@ -143,3 +196,4 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden) poll();
 });
 newTerminal();
+cleanupSettings().catch(showError);

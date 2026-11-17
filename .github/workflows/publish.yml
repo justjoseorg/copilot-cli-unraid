@@ -11,6 +11,10 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -59,7 +63,9 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=
 
-      - uses: docker/build-push-action@v6
+      - name: Publish Unraid update
+        id: publish
+        uses: docker/build-push-action@v6
         if: github.event_name != 'pull_request'
         with:
           context: .
@@ -68,3 +74,19 @@ jobs:
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
           cache-from: type=gha
+
+      - name: Summarize published update
+        if: github.event_name != 'pull_request'
+        env:
+          IMAGE_TAGS: ${{ steps.metadata.outputs.tags }}
+          IMAGE_DIGEST: ${{ steps.publish.outputs.digest }}
+        run: |
+          {
+            echo '## Published container update'
+            echo
+            printf '```text\n%s\n%s\n```\n' "$IMAGE_TAGS" "$IMAGE_DIGEST"
+            echo
+            echo 'On Unraid, use Docker > Check for Updates, then apply the copilot-cli update.'
+            echo 'Automatic installation requires the CA Auto Update Applications plugin configured on the Unraid host.'
+            echo 'Updating restarts the container and ends running terminal jobs.'
+          } >> "$GITHUB_STEP_SUMMARY"
